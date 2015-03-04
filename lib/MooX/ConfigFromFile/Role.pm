@@ -3,7 +3,7 @@ package MooX::ConfigFromFile::Role;
 use strict;
 use warnings;
 
-our $VERSION = '0.005';
+our $VERSION = '0.006';
 
 use Moo::Role;
 
@@ -41,9 +41,58 @@ has 'config_prefix' => ( is => 'lazy' );
 
 sub _build_config_prefix { $Script; }
 
+has 'config_prefixes' => ( is => 'lazy' );
+
+sub _build_config_prefixes
+{
+    my ( $class, $params ) = @_;
+    defined $params->{config_prefix} or $params->{config_prefix} = $class->_build_config_prefix($params);
+    [ $params->{config_prefix} ];
+}
+
+has 'config_prefix_map_separator' => ( is => 'lazy' );
+
+sub _build_config_prefix_map_separator { "-" }
+
+has 'config_prefix_map' => ( is => 'lazy' );
+
+sub _build_config_prefix_map
+{
+    my ( $class, $params ) = @_;
+
+    defined $params->{config_prefix_map_separator}
+      or $params->{config_prefix_map_separator} = $class->_build_config_prefix_map_separator($params);
+    defined $params->{config_prefixes} or $params->{config_prefixes} = $class->_build_config_prefixes($params);
+
+    my ( $sep, $i, @prefix_map ) = ( $params->{config_prefix_map_separator} );
+    for ( $i = 0; $i < scalar @{ $params->{config_prefixes} }; ++$i )
+    {
+        push @prefix_map, join( $sep, @{ $params->{config_prefixes} }[ 0 .. $i ] );
+    }
+
+    \@prefix_map;
+}
+
 has 'config_extensions' => ( is => 'lazy' );
 
 sub _build_config_extensions { [ Config::Any->extensions() ] }
+
+has 'config_files_pattern' => ( is => 'lazy' );
+
+sub _build_config_files_pattern
+{
+    my ( $class, $params ) = @_;
+
+    defined $params->{config_prefix_map} or $params->{config_prefix_map} = $class->_build_config_prefix_map($params);
+    defined $params->{config_extensions} or $params->{config_extensions} = $class->_build_config_extensions($params);
+    # my @cfg_pattern = map { $params->{config_prefix} . "." . $_ } @{ $params->{config_extensions} };
+    my @cfg_pattern = map {
+        my $ext = $_;
+        map { $_ . "." . $ext } @{ $params->{config_prefix_map} }
+    } @{ $params->{config_extensions} };
+
+    \@cfg_pattern;
+}
 
 has 'config_files' => ( is => 'lazy' );
 
@@ -51,13 +100,12 @@ sub _build_config_files
 {
     my ( $class, $params ) = @_;
 
-    defined $params->{config_prefix}     or $params->{config_prefix}     = $class->_build_config_prefix($params);
-    defined $params->{config_dirs}       or $params->{config_dirs}       = $class->_build_config_dirs($params);
-    defined $params->{config_extensions} or $params->{config_extensions} = $class->_build_config_extensions($params);
+    defined $params->{config_files_pattern} or $params->{config_files_pattern} = $class->_build_config_files_pattern($params);
+    defined $params->{config_dirs}          or $params->{config_dirs}          = $class->_build_config_dirs($params);
+    ref $params->{config_dirs} eq "ARRAY"   or $params->{config_dirs}          = ["."];
 
-    ref $params->{config_dirs} eq "ARRAY" or $params->{config_dirs} = ["."];
-    my @cfg_pattern = map { $params->{config_prefix} . "." . $_ } @{ $params->{config_extensions} };
-    my @cfg_files = File::Find::Rule->file()->name(@cfg_pattern)->maxdepth(1)->in( @{ $params->{config_dirs} } );
+    my @cfg_files =
+      File::Find::Rule->file()->name( @{ $params->{config_files_pattern} } )->maxdepth(1)->in( @{ $params->{config_dirs} } );
 
     return \@cfg_files;
 }
@@ -85,8 +133,8 @@ sub _build_loaded_config
     {
         %$config_merged = ( %$config_merged, %$c );
     }
-    return $config_merged;
 
+    $config_merged;
 }
 
 =head1 NAME
@@ -117,8 +165,27 @@ L<File::ConfigDir::Plack>.
 
 =head2 config_prefix
 
-This attribute defaults to L<FindBin>'s C<$Script>. It's interpreted as the
-basename of the config file name to use.
+This attribute is a string and defaults to L<FindBin>'s C<$Script>. It's
+interpreted as the basename of the config file name to use.
+
+=head2 config_prefixes
+
+This attribute is an array of strings and defaults to C<<[ config_prefix ]>>.
+
+=head2 config_prefix_map_separator
+
+This attribute is a string and contains the character which is used building
+I<config_prefix_map> from I<config_prefixes>.
+
+=head2 config_prefix_map
+
+This attribute is an array of strings containing all config-prefixes joint
+together C<($0, $0.$1, $0.$1.$2, ...)> using I<config_prefix_map_separator>.
+
+=head2 config_files_pattern
+
+This attribute contains a cross-product of I<config_prefix_map> and
+I<config_extensions>. Both are concatenated using the shell wildcard '*'.
 
 =head2 config_dirs
 
@@ -134,6 +201,16 @@ This attribute defaults to list of extensions from L<Config::Any|Config::Any/ext
 This attribute contains the list of existing files in I<config_dirs> matching
 I<config_prefix> . I<config_extensions>.  Search is operated by L<File::Find::Rule>.
 
+=head2 loaded_config
+
+This attribute contains the config loaded while constructing the instance.
+For classes set up using
+
+  use MooX::ConfigFromFile config_singleton = 1;
+
+this attribute is cached from the very first construction and fed by overwritten
+I<builder>. The content of this attribute is passed to lower I<BUILDARGS>.
+
 =head1 AUTHOR
 
 Jens Rehsack, C<< <rehsack at cpan.org> >>
@@ -145,7 +222,7 @@ creation with nasty hacks. He also taught me a bit more how Moo(se) works.
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2013-2014 Jens Rehsack.
+Copyright 2013-2015 Jens Rehsack.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published

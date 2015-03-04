@@ -3,7 +3,7 @@ package MooX::ConfigFromFile;
 use strict;
 use warnings FATAL => 'all';
 
-our $VERSION = '0.005';
+our $VERSION = '0.006';
 
 my %loaded_configs;
 
@@ -29,23 +29,24 @@ sub import
     my $around;
     defined $import_options{config_singleton} and $import_options{config_singleton} and do
     {
-        $around or $around = $target->can('around');
+        $around = $target->can('around');
         $around->(
             _build_loaded_config => sub {
                 my $orig  = shift;
-                my $self  = shift;
-                my $class = ref $self ? ref $self : $self;
-                defined $loaded_configs{$class} or $loaded_configs{$class} = $self->$orig(@_);
+                my $class = shift;
+                defined $loaded_configs{$class} or $loaded_configs{$class} = $class->$orig(@_);
                 return $loaded_configs{$class};
             }
         );
     };
 
     my %default_modifiers = (
-        config_prefix     => '_build_config_prefix',
-        config_extensions => '_build_config_extensions',
-        config_dirs       => '_build_config_dirs',
-        config_files      => '_build_config_files',
+        config_prefix               => '_build_config_prefix',
+        config_identifier           => '_build_config_identifier',
+        config_prefix_map_separator => '_build_config_prefix_map_separator',
+        config_extensions           => '_build_config_extensions',
+        config_dirs                 => '_build_config_dirs',
+        config_files                => '_build_config_files',
     );
 
     foreach my $opt_key ( keys %default_modifiers )
@@ -122,6 +123,10 @@ in default initializers for appropriate role attributes:
 
 Default for L<MooX::ConfigFromFile::Role/config_prefix>.
 
+=item C<config_prefix_map_separator>
+
+Default for L<MooX::ConfigFromFile::Role/config_prefix_map_separator>.
+
 =item C<config_extensions>
 
 Default for L<MooX::ConfigFromFile::Role/config_extensions>.
@@ -145,6 +150,10 @@ Flag adding a wrapper L<< around|Class::Method::Modifiers/around method(s) => su
 the I<builder> of L<MooX::ConfigFromFile::Role/loaded_config> to ensure a
 config is loaded only once per class. The I<per class> restriction results
 from applicable modifiers per class (and singletons are per class).
+
+=item C<config_identifier>
+
+Default for L<MooX::File::ConfigDir/config_identifier>.
 
 =back
 
@@ -192,7 +201,7 @@ L<http://search.cpan.org/dist/MooX-ConfigFromFile/>
 
 =head1 LICENSE AND COPYRIGHT
 
-Copyright 2013-2014 Jens Rehsack.
+Copyright 2013-2015 Jens Rehsack.
 
 This program is free software; you can redistribute it and/or modify it
 under the terms of either: the GNU General Public License as published

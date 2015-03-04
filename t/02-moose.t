@@ -1,6 +1,6 @@
 #!perl
 
-use 5.008003;
+use 5.008001;
 
 use strict;
 use warnings FATAL => 'all';
@@ -12,6 +12,12 @@ BEGIN {
     $@ and plan skip_all => "Moose test requires Moose being installed";
 }
 
+our $OO = "Moose";
+$ENV{WHICH_MOODEL} = "Moose";
+
 do "t/testlib.pm";
+do "t/testerr.pm";
+eval "use MooX::Cmd 0.012; do 't/testmxcmd.pm'";
+eval "{package MooX::ConfigFromFile::Test::Availability::Of::MooX::Options; use $OO; use MooX::Options 4.001; }; do 't/testmxopt.pm'";
 
 done_testing;
