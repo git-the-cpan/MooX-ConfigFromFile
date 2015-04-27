@@ -3,14 +3,14 @@ package MooX::ConfigFromFile::Role;
 use strict;
 use warnings;
 
-our $VERSION = '0.006';
-
-use Moo::Role;
+our $VERSION = '0.007';
 
 use FindBin qw/$Script/;
 
 use Config::Any;
 use File::Find::Rule;
+
+use Moo::Role;
 
 with "MooX::File::ConfigDir";
 
@@ -110,6 +110,29 @@ sub _build_config_files
     return \@cfg_files;
 }
 
+has raw_loaded_config => (
+    is      => 'lazy',
+    clearer => 1
+);
+
+sub _build_raw_loaded_config
+{
+    my ( $class, $params ) = @_;
+
+    defined $params->{config_files} or $params->{config_files} = $class->_build_config_files($params);
+    return [] if !@{ $params->{config_files} };
+
+    [
+        sort { my @a = %{$a}; my @b = %{$b}; $a[0] cmp $b[0]; } @{ Config::Any->load_files(
+                {
+                    files   => $params->{config_files},
+                    use_ext => 1
+                }
+            )
+        }
+    ];
+}
+
 has 'loaded_config' => (
     is      => 'lazy',
     clearer => 1
@@ -119,17 +142,10 @@ sub _build_loaded_config
 {
     my ( $class, $params ) = @_;
 
-    defined $params->{config_files} or $params->{config_files} = $class->_build_config_files($params);
-    return {} if !@{ $params->{config_files} };
+    defined $params->{raw_loaded_config} or $params->{raw_loaded_config} = $class->_build_raw_loaded_config($params);
 
-    my $config = Config::Any->load_files(
-        {
-            files   => $params->{config_files},
-            use_ext => 1
-        }
-    );
     my $config_merged = {};
-    for my $c ( map { values %$_ } @$config )
+    for my $c ( map { values %$_ } @{ $params->{raw_loaded_config} } )
     {
         %$config_merged = ( %$config_merged, %$c );
     }
@@ -201,9 +217,18 @@ This attribute defaults to list of extensions from L<Config::Any|Config::Any/ext
 This attribute contains the list of existing files in I<config_dirs> matching
 I<config_prefix> . I<config_extensions>.  Search is operated by L<File::Find::Rule>.
 
+=head2 raw_loaded_config
+
+This attribute contains the config as loaded from file system in an array of
+C<< filename => \%content >>.  The result from L<Config::Any> is sorted by
+filename (C<< '-' < '.' >>).
+
 =head2 loaded_config
 
-This attribute contains the config loaded while constructing the instance.
+This attribute contains the config loaded and transformed while constructing
+the instance. Construction is done from I<raw_loaded_config>, ignoring the
+filename part.
+
 For classes set up using
 
   use MooX::ConfigFromFile config_singleton = 1;
